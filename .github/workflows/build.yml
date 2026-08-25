@@ -1,0 +1,67 @@
+name: "Publish Releases"
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  publish-tauri:
+    permissions:
+      contents: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: "windows-latest"
+            target: "x86_64-pc-windows-msvc"
+            args: "--target x86_64-pc-windows-msvc"
+          - platform: "windows-latest"
+            target: "i686-pc-windows-msvc"
+            args: "--target i686-pc-windows-msvc"
+          - platform: "macos-latest"
+            target: "universal-apple-darwin"
+            args: "--target universal-apple-darwin"
+
+    runs-on: ${{ matrix.platform }}
+    steps:
+      - name: Checkout Private Source Code
+        uses: actions/checkout@v4
+        with:
+          repository: raouadallabouch/Moncaisse
+          token: ${{ secrets.RELEASE_TOKEN }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: lts/*
+
+      - name: Install Rust Stable
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.platform == 'macos-latest' && 'aarch64-apple-darwin,x86_64-apple-darwin' || matrix.target }}
+
+      - name: Install Node dependencies
+        run: npm install
+        working-directory: owner-app
+
+      - name: Sync Version from VERSION file
+        run: node sync-version.js
+        working-directory: owner-app
+
+      - name: Build and Publish Tauri App
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        with:
+          projectPath: owner-app
+          tagName: v__VERSION__
+          releaseName: "MonCaisse v__VERSION__"
+          releaseBody: "Installation files for MonCaisse POS."
+          releaseDraft: false
+          prerelease: false
+          uploadUpdaterJson: true
+          args: ${{ matrix.args }}
